@@ -29,3 +29,38 @@ function doPost(e) {
   MailApp.sendEmail(mail);
   return ContentService.createTextOutput('ok');
 }
+
+// ---------- weekly CSV backup (migration 005) ----------
+// Emails each table as a CSV attachment to TO; the weekly call also keeps the free
+// Supabase project from pausing. SB_ANON is the public key already in js/supabase.js.
+// BACKUP_TOKEN must match the sha256 stored in backup_export(); keep it out of the repo.
+const SB_URL = 'https://uloodavzquardkeecrlx.supabase.co';
+const SB_ANON = 'COPY_FROM_js/supabase.js';
+const BACKUP_TOKEN = 'REPLACE_WITH_BACKUP_SECRET';
+
+function weeklyBackup() {
+  const res = UrlFetchApp.fetch(SB_URL + '/rest/v1/rpc/backup_export', {
+    method: 'post', contentType: 'application/json',
+    headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON },
+    payload: JSON.stringify({ p_token: BACKUP_TOKEN })
+  });
+  const data = JSON.parse(res.getContentText());
+  const day = Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
+  const files = Object.keys(data).filter(t => data[t].length).map(t => Utilities.newBlob(toCsv(data[t]), 'text/csv', t + '_' + day + '.csv'));
+  const counts = Object.keys(data).map(t => t + ': ' + data[t].length + ' rows').join('\n');
+  MailApp.sendEmail({ to: TO, subject: 'Website data backup ' + day, body: 'Weekly backup of the website form tables (CSV attached).\n\n' + counts, attachments: files });
+}
+
+function toCsv(rows) {
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const cell = v => { if (v === null || v === undefined) return ''; const s = typeof v === 'object' ? JSON.stringify(v) : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return [cols.join(',')].concat(rows.map(r => cols.map(c => cell(r[c])).join(','))).join('\r\n');
+}
+
+// Run once from the editor: schedules weeklyBackup every Monday 8am and runs it now.
+function setupWeeklyBackup() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'weeklyBackup').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(8).inTimezone('Asia/Kuala_Lumpur').create();
+  weeklyBackup();
+}
