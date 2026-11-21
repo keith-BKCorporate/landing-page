@@ -1532,7 +1532,7 @@ flex-direction: column;
 padding: var(--spacing-6);
 }
 }
-.contact-form .hp-field {
+.hp-field {
 position: absolute;
 left: -10000px;
 top: auto;

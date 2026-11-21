@@ -753,7 +753,7 @@
 }
 
 /* Honeypot: visually hidden but present in the DOM (display:none is skipped by many bots). */
-.contact-form .hp-field {
+.hp-field {
     position: absolute;
     left: -10000px;
     top: auto;

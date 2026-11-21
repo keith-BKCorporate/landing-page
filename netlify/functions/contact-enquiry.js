@@ -1,5 +1,6 @@
 /**
- * Contact / quote enquiry — server-side spam gate before Supabase insert.
+ * Website forms — server-side spam gate before Supabase insert.
+ * body.form: 'contact' (default, quote enquiry), 'newsletter' or 'registration' (programme sign-up).
  *
  * Checks: honeypot, minimum time since form open, light heuristics, IP rate limit.
  * Cloudflare Turnstile / reCAPTCHA can be wired here when BOSS provides site+secret keys.
@@ -23,7 +24,8 @@ const RATE_MAX = 3;
 /** @type {Map<string, number[]>} */
 const hitsByIp = globalThis.__bkContactHits || (globalThis.__bkContactHits = new Map());
 
-const THROWAYWAY = /@(mailinator|guerrillamail|tempmail|temp-mail|10minutemail|trashmail|yopmail|sharklasers|discard\.email|fakeinbox|maildrop\.cc)(\.|$)/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const THROWAYWAY =/@(mailinator|guerrillamail|tempmail|temp-mail|10minutemail|trashmail|yopmail|sharklasers|discard\.email|fakeinbox|maildrop\.cc)(\.|$)/i;
 
 function json(status, body) {
   return {
@@ -130,27 +132,57 @@ exports.handler = async (event) => {
     return json(400, { ok: false, error: 'too_fast_or_stale' });
   }
 
-  const d = {
-    name: String(body.name || '').trim(),
-    email: String(body.email || '').trim(),
-    phone: String(body.phone || '').trim(),
-    company: body.company == null || body.company === '' ? null : String(body.company).trim(),
-    industry: body.industry == null || body.industry === '' ? null : String(body.industry).trim(),
-    message: String(body.message || '').trim(),
-    type: body.type === 'quote' ? 'quote' : 'quote'
-  };
+  const str = v => (v == null ? '' : String(v).trim());
+  const opt = v => str(v) || null;
+  const form = body.form === 'newsletter' || body.form === 'registration' ? body.form : 'contact';
+  let table, row;
 
-  if (!d.name || !d.message) return json(400, { ok: false, error: 'missing_fields' });
-  if (!d.email && !d.phone) return json(400, { ok: false, error: 'missing_fields' });
-
-  const reason = isSpamPayload(d);
-  if (reason) return json(400, { ok: false, error: 'rejected' });
+  if (form === 'newsletter') {
+    const email = str(body.email).toLowerCase();
+    if (!EMAIL_RE.test(email) || body.consent !== true) return json(400, { ok: false, error: 'missing_fields' });
+    if (THROWAYWAY.test(email)) return json(400, { ok: false, error: 'rejected' });
+    table = 'newsletter_subscribers';
+    row = { email, consent: true };
+  } else if (form === 'registration') {
+    const d = { name: str(body.name), email: str(body.email), company: opt(body.company) };
+    if (!d.name || !EMAIL_RE.test(d.email) || !str(body.programme_slug) || body.consent_pdpa !== true) {
+      return json(400, { ok: false, error: 'missing_fields' });
+    }
+    if (isSpamPayload(d)) return json(400, { ok: false, error: 'rejected' });
+    const pax = parseInt(body.pax, 10);
+    table = 'programme_registrations';
+    row = {
+      programme_slug: str(body.programme_slug).slice(0, 200),
+      programme_title: opt(body.programme_title),
+      name: d.name, email: d.email,
+      phone: opt(body.phone), company: d.company, designation: opt(body.designation),
+      pax: pax >= 1 && pax <= 50 ? pax : 1,
+      hrdc_claim: body.hrdc_claim === true,
+      message: opt(body.message),
+      consent_pdpa: true
+    };
+  } else {
+    const d = {
+      name: str(body.name),
+      email: str(body.email),
+      phone: str(body.phone),
+      company: opt(body.company),
+      industry: opt(body.industry),
+      message: str(body.message),
+      type: 'quote'
+    };
+    if (!d.name || !d.message) return json(400, { ok: false, error: 'missing_fields' });
+    if (!d.email && !d.phone) return json(400, { ok: false, error: 'missing_fields' });
+    if (isSpamPayload(d)) return json(400, { ok: false, error: 'rejected' });
+    table = 'contact_submissions';
+    row = d;
+  }
 
   const ip = clientIp(event);
-  if (rateLimited(ip)) return json(429, { ok: false, error: 'rate_limited' });
+  if (rateLimited(ip + '|' + form)) return json(429, { ok: false, error: 'rate_limited' });
 
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/contact_submissions`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
       method: 'POST',
       headers: {
         apikey: INSERT_KEY,
@@ -158,19 +190,13 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
         Prefer: 'return=minimal'
       },
-      body: JSON.stringify([{
-        name: d.name,
-        email: d.email || '',
-        phone: d.phone || '',
-        company: d.company,
-        industry: d.industry,
-        message: d.message,
-        type: d.type
-      }])
+      body: JSON.stringify([row])
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error('supabase_insert_failed', res.status, text.slice(0, 200));
+      // newsletter: same email again hits the unique constraint, which is not an error for the visitor
+      if (form === 'newsletter' && res.status === 409) return json(200, { ok: true, already: true });
+      console.error('supabase_insert_failed', table, res.status, text.slice(0, 200));
       return json(502, { ok: false, error: 'storage_failed' });
     }
     return json(200, { ok: true });

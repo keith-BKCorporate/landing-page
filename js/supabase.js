@@ -235,6 +235,12 @@
     }
     function initNewsletter() {
         document.querySelectorAll('.newsletter-form').forEach(form => {
+            // spam trap + open time, same checks as the contact form (server: contact-enquiry function)
+            const hpWrap = document.createElement('div');
+            hpWrap.className = 'hp-field'; hpWrap.setAttribute('aria-hidden', 'true');
+            hpWrap.innerHTML = '<label>Leave blank</label><input type="text" name="website" value="" tabindex="-1" autocomplete="off">';
+            form.appendChild(hpWrap);
+            const openedAt = Date.now();
             form.addEventListener('submit', async e => {
                 e.preventDefault();
                 const input = form.querySelector('input[type="email"]');
@@ -244,11 +250,14 @@
                 const email = (input && input.value.trim()) || '';
                 if (!validEmail(email)) { status(msgEl, T('Please enter a valid email address.', '请输入有效的电邮地址。'), 'error', true); input && input.focus(); return; }
                 if (consent && !consent.checked) { status(msgEl, T('Please tick the consent box to subscribe.', '请勾选同意栏以订阅。'), 'error', true); consent.focus(); return; }
-                if (!client) { subscribeByMail(msgEl, email); return; }
                 try {
-                    const { error } = await client.from('newsletter_subscribers').insert([{ email, consent: true }]);
-                    if (error && error.code !== '23505') throw error;
-                    status(msgEl, error ? T('You are already subscribed. Thank you!', '您已订阅，谢谢！') : T('Thank you for subscribing.', '感谢您的订阅。'), 'success');
+                    const res = await fetch(CONTACT_FN, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ form: 'newsletter', email, consent: true, website: hpWrap.querySelector('input').value, openedAt })
+                    });
+                    const r = await res.json().catch(() => null);
+                    if (!res.ok || !r || !r.ok) throw new Error((r && r.error) || 'function_failed');
+                    status(msgEl, r.already ? T('You are already subscribed. Thank you!', '您已订阅，谢谢！') : T('Thank you for subscribing.', '感谢您的订阅。'), 'success');
                     form.reset();
                 } catch (err) {
                     subscribeByMail(msgEl, email);

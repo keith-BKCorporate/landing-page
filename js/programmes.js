@@ -251,6 +251,7 @@
                 <div class="form-group prog-others"><label>Other attendees</label><textarea aria-label="Other attendees" name="attendees" rows="3" placeholder="One per line: name, email, designation"></textarea></div>
                 <div class="form-group"><label>Message</label><textarea aria-label="Message" name="message" rows="3" placeholder="Invoice details, HRD Corp grant reference, dietary needs..."></textarea></div>
                 <label class="prog-check prog-hrdc-check"><input type="checkbox" name="hrdc_claim"> We intend to claim under HRD Corp</label>
+                <div class="hp-field" aria-hidden="true"><label>Leave blank</label><input type="text" name="website" value="" tabindex="-1" autocomplete="off"></div>
                 <label class="prog-check"><input type="checkbox" name="consent_pdpa" required> I consent to B &amp; K Group processing my personal data to administer this registration, in line with the <a href="privacy-policy.html" target="_blank">Privacy Notice</a> (PDPA 2010). *</label>
                 <button type="submit" class="btn btn-primary btn-full">Submit registration</button>
                 <div class="form-message" aria-live="polite"></div>
@@ -276,6 +277,7 @@
         lastTrigger = document.activeElement;
         const m = ensureModal();
         m._prog = p;
+        m._openedAt = Date.now();
         m.querySelector('.prog-modal-title').textContent = p.title;
         m.querySelector('.prog-modal-sub').textContent = `${dateRange(p)} · ${place(p)}`;
         const f = m.querySelector('form');
@@ -335,9 +337,13 @@
         }
         btn.disabled = true; btn.textContent = 'Submitting…';
         try {
-            if (!window.supabaseClient) throw new Error('offline');
-            const { error } = await window.supabaseClient.from('programme_registrations').insert([data]);
-            if (error) throw error;
+            // via the spam-check function (honeypot, timing, rate limit); any refusal falls back to email/WhatsApp below
+            const res = await fetch('/.netlify/functions/contact-enquiry', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({}, data, { form: 'registration', openedAt: (document.getElementById('prog-modal') || {})._openedAt }))
+            });
+            const r = await res.json().catch(() => null);
+            if (!res.ok || !r || !r.ok) throw new Error((r && r.error) || 'function_failed');
             msg.textContent = 'Thank you. Your registration is received. We will email the confirmation and invoice details shortly.';
             msg.className = 'form-message success';
             f.querySelectorAll('input:not([type=hidden]),textarea').forEach(i => i.disabled = true);
