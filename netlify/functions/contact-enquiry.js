@@ -10,6 +10,10 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uloodavzquardkeecrlx.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVsb29kYXZ6cXVhcmRrZWVjcmx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTc3MjMsImV4cCI6MjA4ODQ5MzcyM30.VqUNZWMKcqLolTnFDlOP874871r6AQmIEVnihdrAtwk';
+// Private key (Netlify env only, never in the repo or browser). Once set, migration 006 removes
+// the public insert rule so only this function can add enquiries.
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const INSERT_KEY = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
 
 const MIN_MS = 3000;
 const MAX_MS = 24 * 60 * 60 * 1000;
@@ -101,7 +105,7 @@ function rateLimited(ip) {
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return json(204, {});
-  if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' });
+  if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'method_not_allowed', mode: SUPABASE_SERVICE_KEY ? 'service' : 'anon' });
 
   let body;
   try {
@@ -149,8 +153,8 @@ exports.handler = async (event) => {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/contact_submissions`, {
       method: 'POST',
       headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: INSERT_KEY,
+        Authorization: `Bearer ${INSERT_KEY}`,
         'Content-Type': 'application/json',
         Prefer: 'return=minimal'
       },
