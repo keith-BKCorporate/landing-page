@@ -751,3 +751,13 @@
         padding: var(--spacing-6);
     }
 }
+
+/* Honeypot: visually hidden but present in the DOM (display:none is skipped by many bots). */
+.contact-form .hp-field {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}

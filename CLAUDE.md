@@ -32,4 +32,4 @@ After any CSS change run `python3 tools/bundle-css.py`; pages load only `css/sit
 - Language: `js/i18n.js`; Forms: `js/supabase.js`; Programmes: `js/programmes.js` + `data/programmes.json`; Assistant: `js/chatbot.js`; Motion: `js/cinematic.js`, `js/motion.js`.
 - Styles: edit `css/features.css` (newest) or the other sources, then bundle.
 - Insights: `content/insights/*.md` (published), drafts in `content/insights/_drafts/` (git-ignored), built by `tools/build-insights.py`.
-- Supabase SQL: `migrations/` (003 = admin-only access, still to be run by Keith).
+- Supabase SQL: `migrations/` (001-005 applied 15 Nov 2026; 004 = email alerts and 005 = Monday 8am CSV backup email, both via Apps Script "Website form alerts" on keith@bkcorporate.com; real URL/tokens live only in the DB and the script).

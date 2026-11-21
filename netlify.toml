@@ -2,6 +2,7 @@
 [build]
   publish = "."
   command = "python3 tools/bundle-css.py && python3 tools/build-insights.py"
+  functions = "netlify/functions"
 
 # Clean URLs: /programmes -> /programmes.html
 [[redirects]]

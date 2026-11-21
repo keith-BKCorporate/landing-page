@@ -131,6 +131,12 @@
                                 </div>
                             </fieldset>
                             <div class="form-group"><label for="contact-message">Message *</label><textarea id="contact-message" name="message" rows="5" required placeholder="Briefly describe the matter and any deadlines. No confidential documents, please."></textarea></div>
+                            <!-- Spam trap: leave empty. Hidden from people; bots that autofill every field get caught. -->
+                            <div class="hp-field" aria-hidden="true">
+                                <label for="contact-website">Leave blank</label>
+                                <input type="text" id="contact-website" name="website" value="" tabindex="-1" autocomplete="off">
+                            </div>
+                            <input type="hidden" id="contact-form-opened" name="_opened" value="">
                             <label class="prog-check"><input type="checkbox" required> I consent to B &amp; K Group processing my personal data to respond to this enquiry, per the <a href="privacy-policy.html" target="_blank">Privacy Notice</a> (PDPA 2010). *</label>
                             <button type="submit" class="btn btn-primary btn-full">Request a quote</button>
                             <p class="form-promise"><svg class="ic" aria-hidden="true" focusable="false"><use href="assets/icons/sprite.svg#clock"></use></svg> We reply the same business day (Mon to Fri). Urgent LHDN deadline? <a href="https://wa.me/601130636198?text=Hi%20B%26K%2C%20I%20have%20an%20urgent%20LHDN%20deadline%20on%20...%20about%20..." target="_blank" rel="noopener">WhatsApp us</a>.</p>

@@ -82,15 +82,36 @@
     window.BKFormFallback = fallback; // used by the programme registration modal
 
     /* ---------- quote / contact form ---------- */
+    // Spam controls (client): honeypot, min time since open, then POST to Netlify Function.
+    // Turnstile/reCAPTCHA: wire when BOSS provides site+secret keys (see netlify/functions/contact-enquiry.js).
+    const CONTACT_FN = '/.netlify/functions/contact-enquiry';
+    const MIN_FORM_MS = 3000;
+
     function initContact() {
         const form = document.getElementById('contact-form');
         if (!form) return;
         const $ = id => form.querySelector('#' + id);
+        const openedEl = $('contact-form-opened');
+        const openedAt = Date.now();
+        if (openedEl) openedEl.value = String(openedAt);
+
         form.addEventListener('submit', async e => {
             e.preventDefault();
             clearErrors(form);
             const msgEl = document.getElementById('contact-message-status');
             const btn = form.querySelector('button[type="submit"]');
+
+            // Honeypot: real visitors never see / fill this
+            const hp = $('contact-website');
+            if (hp && hp.value) {
+                status(msgEl, T('Unable to send. Please try again, or WhatsApp / email us.', '无法发送。请稍后再试，或改用 WhatsApp／电邮联系我们。'), 'error', true);
+                return;
+            }
+            if (Date.now() - openedAt < MIN_FORM_MS) {
+                status(msgEl, T('Please take a moment to complete the form, then try again.', '请稍花一点时间填写表格后再试。'), 'error', true);
+                return;
+            }
+
             const d = {
                 name: $('contact-name').value.trim(),
                 email: $('contact-email').value.trim(),
@@ -148,17 +169,44 @@
             ];
             const subject = (isSpeak ? T('Speaking enquiry', '演讲邀请') : T('Quote request', '报价请求')) + ': ' +
                 [isSpeak ? '' : d.topicText, d.company || d.name].filter(Boolean).join(' – ');
-            if (!client) { fallback(msgEl, lines, subject, d.reply); return; }
+            // Always go through the Netlify Function (server honeypot/timing/heuristics/rate limit).
+            // If the function is unreachable, offer WhatsApp / email — do not insert from the browser.
             const original = btn.textContent; btn.disabled = true; btn.textContent = T('Sending…', '发送中…');
+            const payload = {
+                name: d.name,
+                email: d.email || '',
+                phone: d.phone || '',
+                company: d.company || null,
+                industry: d.topic || null,
+                message: header ? '[' + header + '] ' + d.message : d.message,
+                type: 'quote',
+                website: (hp && hp.value) || '',
+                openedAt: openedAt
+            };
             try {
-                const { error } = await client.from('contact_submissions').insert([{
-                    name: d.name, email: d.email || '', phone: d.phone || '', company: d.company || null,
-                    industry: d.topic || null, message: header ? '[' + header + '] ' + d.message : d.message, type: 'quote'
-                }]);
-                if (error) throw error;
+                const res = await fetch(CONTACT_FN, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let data = null;
+                try { data = await res.json(); } catch (parseErr) { data = null; }
+                if (!res.ok || !data || !data.ok) {
+                    if (res.status === 429) {
+                        status(msgEl, T('Too many requests. Please wait a few minutes, or WhatsApp / email us.', '请求过于频繁。请稍等几分钟，或改用 WhatsApp／电邮联系我们。'), 'error', true);
+                        return;
+                    }
+                    if (data && (data.error === 'rejected' || data.error === 'too_fast_or_stale')) {
+                        status(msgEl, T('Unable to send. Please try again, or WhatsApp / email us.', '无法发送。请稍后再试，或改用 WhatsApp／电邮联系我们。'), 'error', true);
+                        return;
+                    }
+                    throw new Error((data && data.error) || 'function_failed');
+                }
                 status(msgEl, T(`Thank you, ${d.name}. Your request has reached us. We reply the same business day.`, `谢谢您，${d.name}。我们已收到您的请求，会在同一个工作日内回复。`), 'success', true);
                 msgEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                form.reset(); toggleInhouse();
+                form.reset();
+                if (openedEl) openedEl.value = String(Date.now());
+                toggleInhouse();
                 if (typeof gtag === 'function') gtag('event', 'quote_request', { topic: d.topic });
             } catch (err) {
                 fallback(msgEl, lines, subject, d.reply);
